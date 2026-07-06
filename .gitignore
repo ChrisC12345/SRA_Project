@@ -1,0 +1,8 @@
+# Ignore Simulink cache files (slprj folder)
+slprj/
+*.slxc
+
+# Ignore automatically generated code and compilation binaries
+*_ert_rtw/
+*.mex*
+*.der
