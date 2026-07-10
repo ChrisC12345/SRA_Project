@@ -11,6 +11,7 @@ function parameters = params()
     params.arm_length = l;
     params.thrust_coef = k_f;
     params.torque_coef = k_m;
+    params.inertia = [0.01,0,0;0,0.01,0;0,0,0.02];
 
     A = [ k_f,k_f,k_f,k_f;
         0,-k_f*l,0,k_f*l;
