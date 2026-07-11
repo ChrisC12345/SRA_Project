@@ -18,7 +18,7 @@ B_outer = [
 0,1,0
 0,0,1
 ];
-Q_outer = diag([100,100,100,10,10,10]);
+Q_outer = diag([20,20,20,20,20,20]);
 R_outer = diag([0.1,0.1,0.01]);
 
 K_outer = lqr(A_outer,B_outer,Q_outer,R_outer);
