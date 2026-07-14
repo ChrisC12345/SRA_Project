@@ -23,7 +23,9 @@ function K_inner = k_matrix_solver_inner()
     ];
     
     Q_inner = diag([80,80,40,10,10,10]);
-    R_inner = diag([0.2,0.2,0.5]);
+    R_inner = diag([0.2,0.2,0.4]);
     
     K_inner = lqr(A_inner, B_inner, Q_inner, R_inner);
+
+    disp(eig(A_inner - B_inner * K_inner))
 end

@@ -16,8 +16,11 @@ B_outer = [
     0,1,0
     0,0,1
     ];
-Q_outer = diag([1,1,1,3,3,3]);
-R_outer = diag([0.1,0.1,0.01]);
+Q_outer = diag([4,4,8,1,1,2]);
+R_outer = diag([0.1,0.1,0.1]);
 
 K_outer_hybrid = lqr(A_outer,B_outer,Q_outer,R_outer);
+
+%disp("eigenvalues"); disp(eig(A_outer - B_outer*K_outer));
+
 end
