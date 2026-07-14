@@ -22,7 +22,7 @@ arm = string(arm);
 MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
 N          = 2;
-Tend       = 2;
+Tend       = 20;
 baseSeed   = 12345;
 
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
@@ -36,17 +36,19 @@ if ~isKey(ARM2LABEL, char(arm))
 end
 label = ARM2LABEL(char(arm));
 
-%% ---- reproducible per-run Dryden seeds ----
-% Reset per call so every arm sees the SAME turbulence realizations (paired).
+%% ---- reproducible per-run Dryden seeds + wind headings ----
+% Seeded per-arm so each arm sees the SAME turbulence realizations AND wind
+% directions (paired comparison) rather than independent draws.
 rng(baseSeed, 'twister');
-seeds = randi([1, 1e6], N, 4);     % [ug vg wg pg] per run
-
+seeds    = randi([1, 1e6], N, 4);      % [ug vg wg pg] per run
+wind_dir = 360*rand(N, 1);            % mean-wind heading [rad], uniform 0..2pi
 load_system(MODEL);
 
 in(1:N) = Simulink.SimulationInput(MODEL);
 for k = 1:N
     in(k) = in(k).setBlockParameter(CTRL_BLOCK, 'LabelModeActiveChoice', label);
     in(k) = in(k).setVariable('dryden_seed', seeds(k,:));
+    in(k) = in(k).setVariable('wind_dir',    wind_dir(k));
     in(k) = in(k).setModelParameter('StopTime',    num2str(Tend));
     in(k) = in(k).setModelParameter('FastRestart', 'on');
 end
@@ -81,7 +83,7 @@ fprintf('  var(RMSE)  = %.4e   <-- headline\n', R.varRMSE);
 fprintf('  fails      = %d\n', R.nFail);
 
 fname = sprintf('mc_results_%s.mat', arm);
-save(fname, 'R', 'seeds', 'N', 'Tend', 'baseSeed');
+save(fname, 'R', 'seeds', 'wind_dir', 'N', 'Tend', 'baseSeed');
 fprintf('\nSaved -> %s\n', fname);
 end
 

@@ -3,7 +3,7 @@ function parameters = params()
     k_f = 3.0e-5;
     k_m = 7.5e-7;
     l = 0.225;
-    wind_speed = 10;
+    wind_speed = 20;
     m = 1.0;
     g = 9.81;
 
