@@ -22,5 +22,5 @@ function K_outer = k_matrix_solver_outer()
     
     K_outer = lqr(A_outer,B_outer,Q_outer,R_outer);
 
-    disp(eig(A_outer - B_outer * K_outer));
+    %disp(eig(A_outer - B_outer * K_outer));
 end

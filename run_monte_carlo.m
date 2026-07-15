@@ -11,7 +11,7 @@ function R = run_monte_carlo(arm)
 %     * CTRL_BLOCK     full path to the Variant Subsystem (the "Controller" block)
 %     * ARM2LABEL      arm name -> exact Variant control label from the dialog
 %     * 'dryden_seed' Dryden block "Noise seeds [ug vg wg pg]" field
-%     * logged signals 'pos'+'ref' (ENU 3-vecs) or a single 'pos_err'
+%     * logged signals 'pos'+'ref' must each be a 3-element ENU position wire
 
 if nargin < 1 || arm == ""
     error('Specify an arm, e.g. run_monte_carlo("LQR").');
@@ -21,8 +21,8 @@ arm = string(arm);
 %% ---- config ----
 MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
-N          = 2;
-Tend       = 20;
+N          = 30;
+Tend       = 60;
 baseSeed   = 12345;
 
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
@@ -66,7 +66,12 @@ for k = 1:N
         warning('Run %d (%s) failed: %s', k, arm, out(k).ErrorMessage);
         continue;
     end
-    rmse(k) = rmseFromOut(out(k));
+    try
+        rmse(k) = rmseFromOut(out(k));
+    catch ME
+        nFail = nFail + 1;
+        warning('Run %d (%s) RMSE extraction failed: %s', k, arm, ME.message);
+    end
 end
 
 R.arm      = arm;
@@ -78,6 +83,13 @@ R.nFail    = nFail;
 
 %% ---- report ----
 fprintf('\n=== Monte Carlo: %s (%s), %d runs, Dryden severe ===\n', arm, label, N);
+for k = 1:N
+    if isnan(rmse(k))
+        fprintf('  run %3d: FAILED\n', k);
+    else
+        fprintf('  run %3d: RMSE = %.4f m\n', k, rmse(k));
+    end
+end
 fprintf('  mean(RMSE) = %.4f\n', R.meanRMSE);
 fprintf('  var(RMSE)  = %.4e   <-- headline\n', R.varRMSE);
 fprintf('  fails      = %d\n', R.nFail);
@@ -90,42 +102,75 @@ end
 
 function r = rmseFromOut(so)
 %RMSEFROMOUT  Per-run position-tracking RMSE (trapz-weighted for variable step).
-%   Requires two named, logged signals in the model:
-%     'pos' : actual ENU position, single 3-element wire (Mux'd, not a bus)
-%     'ref' : commanded ENU position, single 3-element wire
-pos = getElement(so.logsout, 'pos').Values.Data;   % any shape
-ref = getElement(so.logsout, 'ref').Values.Data;
-t   = getElement(so.logsout, 'pos').Values.Time;
-t   = t(:);                                        % force column
+%   Requires two named, logged signals: 'pos' and 'ref', each a 3-element
+%   ENU position wire. Any array layout is accepted; ref is resampled onto
+%   pos's time grid if their logging rates differ. Guaranteed scalar output.
 
-pos = shapeTx3(pos, numel(t));                     % -> [T x 3]
-if numel(ref) == 3
-    ref = reshape(ref, 1, 3);                      % constant setpoint
+pos_ts = getElement(so.logsout, 'pos').Values;
+ref_ts = getElement(so.logsout, 'ref').Values;
+
+t   = pos_ts.Time(:);
+T   = numel(t);
+pos = coerceT3(pos_ts.Data, T, 'pos');
+
+% ref: constant setpoint, or time series (possibly on a different grid)
+rD = ref_ts.Data;
+if numel(rD) == 3
+    ref = repmat(reshape(rD, 1, 3), T, 1);
 else
-    ref = shapeTx3(ref, numel(t));
+    tr  = ref_ts.Time(:);
+    ref = coerceT3(rD, numel(tr), 'ref');
+    if numel(tr) ~= T || any(tr ~= t)
+        ref = interp1(tr, ref, t, 'linear', 'extrap');   % resample onto pos grid
+    end
 end
 
-e  = pos - ref;                 % [1x3] ref broadcasts over rows
-sq = sum(e.^2, 2);
-if numel(t) > 1
+e  = pos - ref;                                   % [T x 3]
+assert(isequal(size(e), [T 3]), ...
+    'rmseFromOut:badError', 'error signal is %s, expected [%d x 3]', ...
+    mat2str(size(e)), T);
+
+sq = sum(e.^2, 2);                                % [T x 1]
+if T > 1
     ms = trapz(t, sq) / (t(end) - t(1));
 else
     ms = mean(sq);
 end
 r = sqrt(ms);
+assert(isscalar(r) && isfinite(r), ...
+    'rmseFromOut:notScalar', 'RMSE came out %s', mat2str(size(r)));
 end
 
 
-function D = shapeTx3(D, T)
-%SHAPETX3  Coerce logged 3-vector data of any layout to [T x 3].
-D = squeeze(D);                 % [3x1xT] -> [3xT], [1x3xT] -> [3xT]
-if isvector(D)
-    D = D(:);                   % degenerate single-channel case
-elseif size(D,1) ~= T && size(D,2) == T
-    D = D.';                    % [3xT] -> [Tx3]
+function D = coerceT3(D, T, name)
+%COERCET3  Coerce logged data to [T x 3] or fail with a diagnostic.
+%   Handles [T x 3], [3 x T], [3 x 1 x T], [1 x 3 x T], [T x 1 x 3], etc.
+origSize = size(D);
+D = squeeze(D);
+
+if ~ismatrix(D)
+    error('coerceT3:tooManyDims', ...
+        ['Signal ''%s'' logged as %s -> squeezed %s: still >2-D. ' ...
+         'The wire carries more than one 3-vector. Check the Mux/Bus ' ...
+         'Selector feeding the ''%s'' signal name.'], ...
+        name, mat2str(origSize), mat2str(size(D)), name);
 end
+
+% Orient so rows = time
+if size(D,1) ~= T && size(D,2) == T
+    D = D.';
+end
+
 if size(D,1) ~= T
-    error('shapeTx3:mismatch', ...
-        'Logged data has %d rows but time has %d samples.', size(D,1), T);
+    error('coerceT3:timeMismatch', ...
+        'Signal ''%s'': data %s does not align with %d time samples.', ...
+        name, mat2str(size(D)), T);
+end
+if size(D,2) ~= 3
+    error('coerceT3:notThreeChannels', ...
+        ['Signal ''%s'' has %d channels, expected 3 (ENU position). ' ...
+         'Logged size was %s. The named wire is carrying the wrong ' ...
+         'signals - fix the Mux/Bus Selector so only [x y z] pass through.'], ...
+        name, size(D,2), mat2str(origSize));
 end
 end

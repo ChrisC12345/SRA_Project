@@ -12,6 +12,8 @@ function parameters = params()
 
     p.N = 50;
 
+    p.height = 50;
+
     p.wind_speed = wind_speed;
     p.V_mean = [wind_speed;0;0];
     p.air_density = 1.225;
