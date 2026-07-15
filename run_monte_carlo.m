@@ -97,6 +97,68 @@ fprintf('  fails      = %d\n', R.nFail);
 fname = sprintf('mc_results_%s.mat', arm);
 save(fname, 'R', 'seeds', 'wind_dir', 'N', 'Tend', 'baseSeed');
 fprintf('\nSaved -> %s\n', fname);
+
+%% ---- plots: trajectories of all runs + per-run RMSE ----
+% Figure 1: position error magnitude vs time, every successful run overlaid
+figure('Name', sprintf('MC trajectories - %s', arm));
+hold on; grid on;
+for k = 1:N
+    if ~isempty(out(k).ErrorMessage), continue; end
+    try
+        [t, emag] = errMagFromOut(out(k));
+        plot(t, emag, 'DisplayName', sprintf('run %d', k));
+    catch
+        % extraction already warned above; skip plot for this run
+    end
+end
+xlabel('Time (s)');
+ylabel('||position error|| (m)');
+title(sprintf('%s: position error, all runs (N = %d)', arm, N));
+legend('Location', 'best');
+hold off;
+
+% Figure 2: RMSE per run
+ok = ~isnan(rmse);
+figure('Name', sprintf('MC RMSE - %s', arm));
+hold on; grid on;
+stem(find(ok), rmse(ok), 'filled', 'DisplayName', 'per-run RMSE');
+yline(R.meanRMSE, '--', sprintf('mean = %.3f m', R.meanRMSE), ...
+    'DisplayName', 'mean', 'LabelHorizontalAlignment', 'left');
+if any(~ok)
+    plot(find(~ok), zeros(nnz(~ok),1), 'rx', 'MarkerSize', 10, ...
+        'LineWidth', 1.5, 'DisplayName', 'failed run');
+end
+xlim([0, N+1]);
+xticks(1:N);
+xlabel('Run index');
+ylabel('Position RMSE (m)');
+title(sprintf('%s: per-run RMSE, var = %.3e m^2', arm, R.varRMSE));
+legend('Location', 'best');
+hold off;
+end
+
+
+function [t, emag] = errMagFromOut(so)
+%ERRMAGFROMOUT  Time vector and position-error magnitude for one run.
+pos_ts = getElement(so.logsout, 'pos').Values;
+ref_ts = getElement(so.logsout, 'ref').Values;
+
+t   = pos_ts.Time(:);
+T   = numel(t);
+pos = coerceT3(pos_ts.Data, T, 'pos');
+
+rD = ref_ts.Data;
+if numel(rD) == 3
+    ref = repmat(reshape(rD, 1, 3), T, 1);
+else
+    tr  = ref_ts.Time(:);
+    ref = coerceT3(rD, numel(tr), 'ref');
+    if numel(tr) ~= T || any(tr ~= t)
+        ref = interp1(tr, ref, t, 'linear', 'extrap');
+    end
+end
+
+emag = sqrt(sum((pos - ref).^2, 2));   % [T x 1]
 end
 
 
@@ -106,31 +168,9 @@ function r = rmseFromOut(so)
 %   ENU position wire. Any array layout is accepted; ref is resampled onto
 %   pos's time grid if their logging rates differ. Guaranteed scalar output.
 
-pos_ts = getElement(so.logsout, 'pos').Values;
-ref_ts = getElement(so.logsout, 'ref').Values;
-
-t   = pos_ts.Time(:);
-T   = numel(t);
-pos = coerceT3(pos_ts.Data, T, 'pos');
-
-% ref: constant setpoint, or time series (possibly on a different grid)
-rD = ref_ts.Data;
-if numel(rD) == 3
-    ref = repmat(reshape(rD, 1, 3), T, 1);
-else
-    tr  = ref_ts.Time(:);
-    ref = coerceT3(rD, numel(tr), 'ref');
-    if numel(tr) ~= T || any(tr ~= t)
-        ref = interp1(tr, ref, t, 'linear', 'extrap');   % resample onto pos grid
-    end
-end
-
-e  = pos - ref;                                   % [T x 3]
-assert(isequal(size(e), [T 3]), ...
-    'rmseFromOut:badError', 'error signal is %s, expected [%d x 3]', ...
-    mat2str(size(e)), T);
-
-sq = sum(e.^2, 2);                                % [T x 1]
+[t, emag] = errMagFromOut(so);
+T  = numel(t);
+sq = emag.^2;
 if T > 1
     ms = trapz(t, sq) / (t(end) - t(1));
 else
