@@ -28,8 +28,8 @@ baseSeed   = 12345;
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
 % (Labels are punctuation-sensitive: hyphen vs underscore matters.)
 ARM2LABEL = containers.Map( ...
-    {'LQR',            'SMC',            'PID'}, ...
-    {'LQR-Controller', 'SMC_Controller', 'PID-Controller'});
+    {'LQR',            'SMC',            'PID', 'Hybrid'}, ...
+    {'LQR-Controller', 'SMC_Controller', 'PID-Controller', 'LQR-SMC-Hybrid-Controller'});
 
 if ~isKey(ARM2LABEL, char(arm))
     error('Unknown arm "%s". Known: %s', arm, strjoin(keys(ARM2LABEL), ', '));
