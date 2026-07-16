@@ -21,7 +21,7 @@ arm = string(arm);
 %% ---- config ----
 MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
-N          = 5;
+N          = 50;
 Tend       = 60;
 baseSeed   = 23456;
 
@@ -60,10 +60,12 @@ out = parsim(in, ...
     'TransferBaseWorkspaceVariables','on', ...
     'StopOnError',                   'off');
 
-rmse  = nan(N,1);
-rms_u = nan(N,1); % NEW: Control Effort
-tv_u  = nan(N,1); % NEW: Chattering
-nFail = 0;
+rmse    = nan(N,1);
+rms_F   = nan(N,1); % RMS Thrust
+rms_tau = nan(N,1); % RMS Torque
+tv_F    = nan(N,1); % TV Thrust
+tv_tau  = nan(N,1); % TV Torque
+nFail   = 0;
 
 for k = 1:N
     if ~isempty(out(k).ErrorMessage)
@@ -73,7 +75,8 @@ for k = 1:N
     end
     try
         rmse(k) = rmseFromOut(out(k));
-        [rms_u(k), tv_u(k)] = ctrlMetricsFromOut(out(k)); % NEW
+        % Call the new helper function
+        [rms_F(k), rms_tau(k), tv_F(k), tv_tau(k)] = ctrlMetricsFromOut(out(k));
     catch ME
         nFail = nFail + 1;
         warning('Run %d (%s) extraction failed: %s', k, arm, ME.message);
@@ -85,20 +88,28 @@ R.label    = label;
 R.rmse     = rmse;
 R.meanRMSE = mean(rmse, 'omitnan');
 R.varRMSE  = var(rmse,  'omitnan');   
-R.meanRMS_u = mean(rms_u, 'omitnan'); % NEW
-R.meanTV_u  = mean(tv_u, 'omitnan');  % NEW
-R.nFail    = nFail;
 
+% Add the new separated ensemble means
+R.meanRMS_F   = mean(rms_F, 'omitnan');
+R.meanRMS_tau = mean(rms_tau, 'omitnan');
+R.meanTV_F    = mean(tv_F, 'omitnan');
+R.meanTV_tau  = mean(tv_tau, 'omitnan');
+
+R.nFail    = nFail;
 %% ---- report ----
 fprintf('\n=== Monte Carlo: %s (%s), %d runs, Dryden severe ===\n', arm, label, N);
-fprintf('  mean(RMSE) = %.4f m\n', R.meanRMSE);
-fprintf('  var(RMSE)  = %.4e m^2\n', R.varRMSE);
-fprintf('  mean(Ctrl Effort RMS) = %.4f\n', R.meanRMS_u); % NEW
-fprintf('  mean(Chattering TV)   = %.4f\n', R.meanTV_u);  % NEW
-fprintf('  fails      = %d\n', R.nFail);
+fprintf('  mean(RMSE)       = %.4f m\n', R.meanRMSE);
+fprintf('  var(RMSE)        = %.4e m^2\n', R.varRMSE);
+fprintf('  mean(RMS Thrust) = %.4f N\n', R.meanRMS_F);
+fprintf('  mean(RMS Torque) = %.4f N-m\n', R.meanRMS_tau);
+fprintf('  mean(TV Thrust)  = %.4f (Chattering)\n', R.meanTV_F);
+fprintf('  mean(TV Torque)  = %.4f (Chattering)\n', R.meanTV_tau);
+fprintf('  fails            = %d\n', R.nFail);
 
 fname = sprintf('mc_results_%s.mat', arm);
-save(fname, 'R', 'seeds', 'wind_dir', 'N', 'Tend', 'baseSeed', 'rms_u', 'tv_u'); % UPDATED
+% Update the save command to include the new arrays
+save(fname, 'R', 'seeds', 'wind_dir', 'N', 'Tend', 'baseSeed', ...
+    'rms_F', 'rms_tau', 'tv_F', 'tv_tau');
 fprintf('\nSaved -> %s\n', fname);
 
 %% ---- plots: trajectories of all runs + per-run RMSE ----
@@ -218,34 +229,49 @@ if size(D,2) ~= 3
 end
 end
 
-function [rms_u, tv_u] = ctrlMetricsFromOut(so)
-%CTRLMETRICSFROMOUT Calculates RMS control effort and Total Variation (chattering).
-%   Requires a logged signal named 'u' representing actuator commands.
+function [rms_F, rms_tau, tv_F, tv_tau] = ctrlMetricsFromOut(so)
+%CTRLMETRICSFROMOUT Calculates separate RMS and TV for Thrust (N) and Torques (N-m).
+%   Requires a logged signal named 'u' carrying [Thrust, Tx, Ty, Tz].
 
-% 1. Extract the control signal
-u_ts = getElement(so.logsout, 'u').Values;
-t = u_ts.Time(:);
-u_data = u_ts.Data;
-T = numel(t);
-
-% Safely reshape data to [Time x Channels]
-if size(u_data, 1) ~= T && size(u_data, 2) == T
-    u_data = u_data.';
-elseif size(u_data, 1) ~= T
-    u_data = reshape(u_data, [], T).';
-end
-
-% 2. RMS Control Effort (Energy)
-sq_u = sum(u_data.^2, 2); % Sum power across all actuator channels
-if T > 1
-    ms = trapz(t, sq_u) / (t(end) - t(1));
-else
-    ms = mean(sq_u);
-end
-rms_u = sqrt(ms);
-
-% 3. Total Variation (Chattering / Wear)
-% Sum of absolute differences step-to-step, summed across channels
-tv_u = sum(sum(abs(diff(u_data, 1, 1))));
+    % Extract the control signal
+    u_ts = getElement(so.logsout, 'u').Values;
+    t = u_ts.Time(:);
+    u_data = u_ts.Data;
+    T = numel(t);
+    
+    % Safely reshape data to [Time x Channels]
+    if size(u_data, 1) ~= T && size(u_data, 2) == T
+        u_data = u_data.';
+    elseif size(u_data, 1) ~= T
+        u_data = reshape(u_data, [], T).';
+    end
+    
+    % Split into Thrust (Col 1) and Torques (Cols 2:4)
+    thrust = u_data(:, 1);
+    torques = u_data(:, 2:4);
+    
+    % 1. RMS Thrust (Newtons)
+    sq_F = thrust.^2;
+    if T > 1
+        ms_F = trapz(t, sq_F) / (t(end) - t(1));
+    else
+        ms_F = mean(sq_F);
+    end
+    rms_F = sqrt(ms_F);
+    
+    % 2. RMS Torque (Newton-meters) - Combines Tx, Ty, Tz
+    sq_tau = sum(torques.^2, 2);
+    if T > 1
+        ms_tau = trapz(t, sq_tau) / (t(end) - t(1));
+    else
+        ms_tau = mean(sq_tau);
+    end
+    rms_tau = sqrt(ms_tau);
+    
+    % 3. Total Variation - Thrust
+    tv_F = sum(abs(diff(thrust)));
+    
+    % 4. Total Variation - Torques (summed across all 3 axes)
+    tv_tau = sum(sum(abs(diff(torques, 1, 1))));
 end
 
