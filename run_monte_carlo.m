@@ -21,7 +21,7 @@ arm = string(arm);
 %% ---- config ----
 MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
-N          = 50;
+N          = 5;
 Tend       = 60;
 baseSeed   = 23456;
 
@@ -61,7 +61,10 @@ out = parsim(in, ...
     'StopOnError',                   'off');
 
 rmse  = nan(N,1);
+rms_u = nan(N,1); % NEW: Control Effort
+tv_u  = nan(N,1); % NEW: Chattering
 nFail = 0;
+
 for k = 1:N
     if ~isempty(out(k).ErrorMessage)
         nFail = nFail + 1;
@@ -70,9 +73,10 @@ for k = 1:N
     end
     try
         rmse(k) = rmseFromOut(out(k));
+        [rms_u(k), tv_u(k)] = ctrlMetricsFromOut(out(k)); % NEW
     catch ME
         nFail = nFail + 1;
-        warning('Run %d (%s) RMSE extraction failed: %s', k, arm, ME.message);
+        warning('Run %d (%s) extraction failed: %s', k, arm, ME.message);
     end
 end
 
@@ -80,24 +84,21 @@ R.arm      = arm;
 R.label    = label;
 R.rmse     = rmse;
 R.meanRMSE = mean(rmse, 'omitnan');
-R.varRMSE  = var(rmse,  'omitnan');   % <-- headline metric
+R.varRMSE  = var(rmse,  'omitnan');   
+R.meanRMS_u = mean(rms_u, 'omitnan'); % NEW
+R.meanTV_u  = mean(tv_u, 'omitnan');  % NEW
 R.nFail    = nFail;
 
 %% ---- report ----
 fprintf('\n=== Monte Carlo: %s (%s), %d runs, Dryden severe ===\n', arm, label, N);
-for k = 1:N
-    if isnan(rmse(k))
-        fprintf('  run %3d: FAILED\n', k);
-    else
-        fprintf('  run %3d: RMSE = %.4f m\n', k, rmse(k));
-    end
-end
-fprintf('  mean(RMSE) = %.4f\n', R.meanRMSE);
-fprintf('  var(RMSE)  = %.4e   <-- headline\n', R.varRMSE);
+fprintf('  mean(RMSE) = %.4f m\n', R.meanRMSE);
+fprintf('  var(RMSE)  = %.4e m^2\n', R.varRMSE);
+fprintf('  mean(Ctrl Effort RMS) = %.4f\n', R.meanRMS_u); % NEW
+fprintf('  mean(Chattering TV)   = %.4f\n', R.meanTV_u);  % NEW
 fprintf('  fails      = %d\n', R.nFail);
 
 fname = sprintf('mc_results_%s.mat', arm);
-save(fname, 'R', 'seeds', 'wind_dir', 'N', 'Tend', 'baseSeed');
+save(fname, 'R', 'seeds', 'wind_dir', 'N', 'Tend', 'baseSeed', 'rms_u', 'tv_u'); % UPDATED
 fprintf('\nSaved -> %s\n', fname);
 
 %% ---- plots: trajectories of all runs + per-run RMSE ----
@@ -216,3 +217,35 @@ if size(D,2) ~= 3
         name, size(D,2), mat2str(origSize));
 end
 end
+
+function [rms_u, tv_u] = ctrlMetricsFromOut(so)
+%CTRLMETRICSFROMOUT Calculates RMS control effort and Total Variation (chattering).
+%   Requires a logged signal named 'u' representing actuator commands.
+
+% 1. Extract the control signal
+u_ts = getElement(so.logsout, 'u').Values;
+t = u_ts.Time(:);
+u_data = u_ts.Data;
+T = numel(t);
+
+% Safely reshape data to [Time x Channels]
+if size(u_data, 1) ~= T && size(u_data, 2) == T
+    u_data = u_data.';
+elseif size(u_data, 1) ~= T
+    u_data = reshape(u_data, [], T).';
+end
+
+% 2. RMS Control Effort (Energy)
+sq_u = sum(u_data.^2, 2); % Sum power across all actuator channels
+if T > 1
+    ms = trapz(t, sq_u) / (t(end) - t(1));
+else
+    ms = mean(sq_u);
+end
+rms_u = sqrt(ms);
+
+% 3. Total Variation (Chattering / Wear)
+% Sum of absolute differences step-to-step, summed across channels
+tv_u = sum(sum(abs(diff(u_data, 1, 1))));
+end
+
