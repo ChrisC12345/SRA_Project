@@ -22,7 +22,7 @@ arm = string(arm);
 MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
 N          = 50;
-Tend       = 1;
+Tend       = 60;
 baseSeed   = 12345;
 
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
