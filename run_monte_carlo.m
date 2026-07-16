@@ -23,7 +23,7 @@ MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
 N          = 50;
 Tend       = 60;
-baseSeed   = 12345;
+baseSeed   = 23456;
 
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
 % (Labels are punctuation-sensitive: hyphen vs underscore matters.)
@@ -43,8 +43,8 @@ rng(baseSeed, 'twister');
 seeds    = randi([1, 1e6], N, 4);      % [ug vg wg pg] per run
 wind_dir = 360*rand(N, 1);            % mean-wind heading [rad], uniform 0..2pi
 load_system(MODEL);
-disp(seeds(23,:));
-disp(wind_dir(23));
+disp(seeds(2,:));
+disp(wind_dir(2));
 in(1:N) = Simulink.SimulationInput(MODEL);
 parfor k = 1:N
     in(k) = in(k).setBlockParameter(CTRL_BLOCK, 'LabelModeActiveChoice', label);
