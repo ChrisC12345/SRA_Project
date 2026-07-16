@@ -17,7 +17,7 @@ function K_outer = k_matrix_solver_outer()
     0,0,1
     ];
 
-    Q_outer = diag([20,20,8,1,1,2]);
+    Q_outer = diag([32,32,8,1,1,2]);
     R_outer = diag([0.1,0.1,0.1]);
     
     K_outer = lqr(A_outer,B_outer,Q_outer,R_outer);
