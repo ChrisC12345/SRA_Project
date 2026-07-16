@@ -6,6 +6,7 @@ function parameters = params()
     wind_speed = 20;
     m = 1.0;
     g = 9.81;
+    kh = 1.0e-4;
 
     p.m = m;
     p.g = g;
@@ -28,7 +29,10 @@ function parameters = params()
     p.Ax = 0.005;
     p.Ay = 0.005;
     p.Az = 0.03;
-    p.kh = 1.0e-4;
+    p.kh = kh;
+
+    p.rotor_height = 0.03;   % m
+    p.kz = kh;             % first cut
 
     A = [ k_f,k_f,k_f,k_f;
         0,-k_f*l,0,k_f*l;
