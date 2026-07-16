@@ -21,7 +21,7 @@ arm = string(arm);
 %% ---- config ----
 MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
-N          = 5;
+N          = 50;
 Tend       = 60;
 baseSeed   = 12345;
 
@@ -48,7 +48,7 @@ in(1:N) = Simulink.SimulationInput(MODEL);
 for k = 1:N
     in(k) = in(k).setBlockParameter(CTRL_BLOCK, 'LabelModeActiveChoice', label);
     in(k) = in(k).setVariable('dryden_seed', seeds(k,:));
-    disp(seeds(k,:))
+    %disp(seeds(k,:))
     in(k) = in(k).setVariable('wind_dir',    wind_dir(k));
     in(k) = in(k).setModelParameter('StopTime',    num2str(Tend));
     in(k) = in(k).setModelParameter('FastRestart', 'on');
