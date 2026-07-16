@@ -23,5 +23,4 @@ B_outer = [
     K_outer_hybrid = lqr(A_outer,B_outer,Q_outer,R_outer);
 
 %disp("eigenvalues"); disp(eig(A_outer - B_outer*K_outer_hybrid));
-
 end

@@ -22,7 +22,7 @@ function K_inner = k_matrix_solver_inner()
     0,0,1/I_zz
     ];
     
-    Q_inner = diag([20 20 12, 0.1 0.1 0.4]);   % angles ~10x, rates ~2x
+    Q_inner = diag([40 40 12, 1 1 0.4]);   % angles ~10x, rates ~2x
     R_inner = diag([16 16 100]);             % unchanged
     
     K_inner = lqr(A_inner, B_inner, Q_inner, R_inner);
