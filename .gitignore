@@ -6,7 +6,3 @@ slprj/
 *_ert_rtw/
 *.mex*
 *.der
-
-/mc_results_LQR.mat
-
-/mc_results_Hybrid.mat
