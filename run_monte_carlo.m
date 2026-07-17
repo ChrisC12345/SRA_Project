@@ -23,7 +23,7 @@ MODEL      = 'simulation';
 CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
 N          = 50;
 Tend       = 60;
-baseSeed   = 23456;
+baseSeed   = 54321;
 
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
 % (Labels are punctuation-sensitive: hyphen vs underscore matters.)

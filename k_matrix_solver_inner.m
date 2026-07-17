@@ -27,5 +27,5 @@ function K_inner = k_matrix_solver_inner()
     
     K_inner = lqr(A_inner, B_inner, Q_inner, R_inner);
 
-    damp(eig(A_inner - B_inner * K_inner))
+    %damp(eig(A_inner - B_inner * K_inner))
 end
