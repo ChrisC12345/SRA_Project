@@ -22,9 +22,11 @@ function [phi_ref, theta_ref] = solve_roll_pitch(pos_ddot, pos_dot, euler_angles
     a = (m*x_ddot + x_drag*x_dot)/F;
     b = (m*y_ddot + y_drag*y_dot)/F;
 
+    max_angle = 0.78;
+
     phi_ref   = asin(clip(a*sin(psi) - b*cos(psi),-1,1));
-    phi_ref = clip(phi_ref, -0.5, 0.5);
+    phi_ref = clip(phi_ref, -max_angle, max_angle);
 
     theta_ref = asin(clip((a*cos(psi) + b*sin(psi))/cos(phi_ref), -1, 1));
-    theta_ref = clip(theta_ref, -0.5, 0.5);
+    theta_ref = clip(theta_ref, -max_angle, max_angle);
 end

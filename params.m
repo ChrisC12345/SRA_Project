@@ -26,8 +26,8 @@ function parameters = params()
     p.thrust_coef = k_f;
     p.torque_coef = k_m;
     p.Cd_fuse = 1.0;
-    p.Ax = 0.005;
-    p.Ay = 0.005;
+    p.Ax = 0.01;
+    p.Ay = 0.01;
     p.Az = 0.03;
     p.kh = kh;
 
