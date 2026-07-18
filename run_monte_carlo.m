@@ -31,8 +31,8 @@ T_SKIP     = 5;      % [s] transient discarded from ATTITUDE RMSE only. Set to 0
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
 % (Labels are punctuation-sensitive: hyphen vs underscore matters.)
 ARM2LABEL = containers.Map( ...
-    {'LQR',            'SMC',            'PID', 'Hybrid'}, ...
-    {'LQR-Controller', 'SMC_Controller', 'PID-Controller', 'LQR-SMC-Hybrid-Controller'});
+    {'LQR',            'SMC',            'PID', 'Hybrid','Hybrid2'}, ...
+    {'LQR-Controller', 'SMC_Controller', 'PID-Controller', 'LQR-SMC-Hybrid-Controller','SMC-LQR-Hybrid-Controller'});
 
 if ~isKey(ARM2LABEL, char(arm))
     error('Unknown arm "%s". Known: %s', arm, strjoin(keys(ARM2LABEL), ', '));
@@ -216,7 +216,7 @@ function r = attRmseFromOut(so, Tskip)
 %   Error magnitude = sqrt(e_roll^2 + e_pitch^2).
 
 att_ts = getElement(so.logsout, 'att').Values;
-ref_ts = getElement(so.logsout, 'att_ref3').Values;
+ref_ts = getElement(so.logsout, 'att_ref').Values;
 
 t   = att_ts.Time(:);
 T   = numel(t);
@@ -228,7 +228,7 @@ if numel(rD) <= 3
     ref = ref(:, 1:2);
 else
     tr  = ref_ts.Time(:);
-    ref = coerceT23(rD, numel(tr), 'att_ref3');
+    ref = coerceT23(rD, numel(tr), 'att_ref');
     if numel(tr) ~= T || any(tr ~= t)
         ref = interp1(tr, ref, t, 'linear', 'extrap');
     end
