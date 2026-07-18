@@ -12,6 +12,8 @@ function R = run_monte_carlo(arm)
 %     * ARM2LABEL      arm name -> exact Variant control label from the dialog
 %     * 'dryden_seed' Dryden block "Noise seeds [ug vg wg pg]" field
 %     * logged signals 'pos'+'ref' must each be a 3-element ENU position wire
+%     * logged signals 'att'+'att_ref' must carry [roll pitch] (or
+%       [roll pitch yaw]; only cols 1:2 are used) in rad
 
 if nargin < 1 || arm == ""
     error('Specify an arm, e.g. run_monte_carlo("LQR").');
@@ -24,6 +26,7 @@ CTRL_BLOCK = 'simulation/Controller';   % <-- full path to the Variant Subsystem
 N          = 50;
 Tend       = 60;
 baseSeed   = 54321;
+T_SKIP     = 5;      % [s] transient discarded from ATTITUDE RMSE only. Set to 0 to keep full run.
 
 % Map arm name -> the exact "Variant control label" shown in the block dialog.
 % (Labels are punctuation-sensitive: hyphen vs underscore matters.)
@@ -60,12 +63,13 @@ out = parsim(in, ...
     'TransferBaseWorkspaceVariables','on', ...
     'StopOnError',                   'off');
 
-rmse    = nan(N,1);
-rms_F   = nan(N,1); % RMS Thrust
-rms_tau = nan(N,1); % RMS Torque
-tv_F    = nan(N,1); % TV Thrust
-tv_tau  = nan(N,1); % TV Torque
-nFail   = 0;
+rmse     = nan(N,1);
+rmse_att = nan(N,1); % Roll/pitch tracking RMSE [rad]
+rms_F    = nan(N,1); % RMS Thrust
+rms_tau  = nan(N,1); % RMS Torque
+tv_F     = nan(N,1); % TV Thrust
+tv_tau   = nan(N,1); % TV Torque
+nFail    = 0;
 
 for k = 1:N
     if ~isempty(out(k).ErrorMessage)
@@ -74,7 +78,8 @@ for k = 1:N
         continue;
     end
     try
-        rmse(k) = rmseFromOut(out(k));
+        rmse(k)     = rmseFromOut(out(k));
+        rmse_att(k) = attRmseFromOut(out(k), T_SKIP);
         % Call the new helper function
         [rms_F(k), rms_tau(k), tv_F(k), tv_tau(k)] = ctrlMetricsFromOut(out(k));
     catch ME
@@ -87,7 +92,12 @@ R.arm      = arm;
 R.label    = label;
 R.rmse     = rmse;
 R.meanRMSE = mean(rmse, 'omitnan');
-R.varRMSE  = var(rmse,  'omitnan');   
+R.varRMSE  = var(rmse,  'omitnan');
+
+% Attitude (roll/pitch) tracking
+R.rmse_att     = rmse_att;
+R.meanRMSE_att = mean(rmse_att, 'omitnan');
+R.varRMSE_att  = var(rmse_att,  'omitnan');
 
 % Add the new separated ensemble means
 R.meanRMS_F   = mean(rms_F, 'omitnan');
@@ -100,6 +110,8 @@ R.nFail    = nFail;
 fprintf('\n=== Monte Carlo: %s (%s), %d runs, Dryden severe ===\n', arm, label, N);
 fprintf('  mean(RMSE)       = %.4f m\n', R.meanRMSE);
 fprintf('  var(RMSE)        = %.4e m^2\n', R.varRMSE);
+fprintf('  mean(RMSE att)   = %.4f rad (roll/pitch)\n', R.meanRMSE_att);
+fprintf('  var(RMSE att)    = %.4e rad^2\n', R.varRMSE_att);
 fprintf('  mean(RMS Thrust) = %.4f N\n', R.meanRMS_F);
 fprintf('  mean(RMS Torque) = %.4f N-m\n', R.meanRMS_tau);
 fprintf('  mean(TV Thrust)  = %.4f (Chattering)\n', R.meanTV_F);
@@ -109,7 +121,7 @@ fprintf('  fails            = %d\n', R.nFail);
 fname = sprintf('mc_results_%s.mat', arm);
 % Update the save command to include the new arrays
 save(fname, 'R', 'seeds', 'wind_dir', 'N', 'Tend', 'baseSeed', ...
-    'rms_F', 'rms_tau', 'tv_F', 'tv_tau');
+    'rms_F', 'rms_tau', 'tv_F', 'tv_tau', 'rmse_att');
 fprintf('\nSaved -> %s\n', fname);
 
 %% ---- plots: trajectories of all runs + per-run RMSE ----
@@ -196,6 +208,77 @@ assert(isscalar(r) && isfinite(r), ...
 end
 
 
+function r = attRmseFromOut(so, Tskip)
+%ATTRMSEFROMOUT  Per-run roll/pitch tracking RMSE [rad] (trapz-weighted).
+%   Requires two named, logged signals: 'att' and 'att_ref', each carrying
+%   [roll pitch] or [roll pitch yaw]; only the first two channels are used.
+%   att_ref is resampled onto att's time grid if logging rates differ.
+%   Error magnitude = sqrt(e_roll^2 + e_pitch^2).
+
+att_ts = getElement(so.logsout, 'att').Values;
+ref_ts = getElement(so.logsout, 'att_ref3').Values;
+
+t   = att_ts.Time(:);
+T   = numel(t);
+att = coerceT23(att_ts.Data, T, 'att');
+
+rD = ref_ts.Data;
+if numel(rD) <= 3
+    ref = repmat(reshape(rD, 1, []), T, 1);
+    ref = ref(:, 1:2);
+else
+    tr  = ref_ts.Time(:);
+    ref = coerceT23(rD, numel(tr), 'att_ref3');
+    if numel(tr) ~= T || any(tr ~= t)
+        ref = interp1(tr, ref, t, 'linear', 'extrap');
+    end
+end
+
+sq = sum((att - ref).^2, 2);   % roll^2 + pitch^2 error
+[t, sq] = trimSkip(t, sq, Tskip);   % <-- comment out to keep full run
+T = numel(t);
+if T > 1
+    ms = trapz(t, sq) / (t(end) - t(1));
+else
+    ms = mean(sq);
+end
+r = sqrt(ms);
+assert(isscalar(r) && isfinite(r), ...
+    'attRmseFromOut:notScalar', 'Attitude RMSE came out %s', mat2str(size(r)));
+end
+
+
+function D = coerceT23(D, T, name)
+%COERCET23  Coerce logged attitude data to [T x 2] (roll, pitch).
+%   Accepts 2- or 3-channel wires in any layout; keeps only cols 1:2.
+origSize = size(D);
+D = squeeze(D);
+
+if ~ismatrix(D)
+    error('coerceT23:tooManyDims', ...
+        'Signal ''%s'' logged as %s: still >2-D after squeeze.', ...
+        name, mat2str(origSize));
+end
+
+% Orient so rows = time
+if size(D,1) ~= T && size(D,2) == T
+    D = D.';
+end
+
+if size(D,1) ~= T
+    error('coerceT23:timeMismatch', ...
+        'Signal ''%s'': data %s does not align with %d time samples.', ...
+        name, mat2str(size(D)), T);
+end
+if size(D,2) < 2
+    error('coerceT23:notEnoughChannels', ...
+        ['Signal ''%s'' has %d channels, expected >= 2 (roll, pitch). ' ...
+         'Logged size was %s.'], name, size(D,2), mat2str(origSize));
+end
+D = D(:, 1:2);
+end
+
+
 function D = coerceT3(D, T, name)
 %COERCET3  Coerce logged data to [T x 3] or fail with a diagnostic.
 %   Handles [T x 3], [3 x T], [3 x 1 x T], [1 x 3 x T], [T x 1 x 3], etc.
@@ -275,3 +358,14 @@ function [rms_F, rms_tau, tv_F, tv_tau] = ctrlMetricsFromOut(so)
     tv_tau = sum(sum(abs(diff(torques, 1, 1))));
 end
 
+function [t, D] = trimSkip(t, D, Tskip)
+%TRIMSKIP  Discard the first Tskip seconds of a logged signal.
+%   D can be [T x 1] or [T x C]. Set T_SKIP = 0 in config (or comment out
+%   the trimSkip call sites) to keep the full run.
+if nargin < 3 || isempty(Tskip) || Tskip <= 0
+    return;
+end
+mask = t >= (t(1) + Tskip);
+t = t(mask);
+D = D(mask, :);
+end
