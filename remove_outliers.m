@@ -2,14 +2,14 @@
 clear; clc;
 
 % 1. Load your saved .mat file
-filename = 'mc_results_Hybrid.mat'; % <-- Update this to your exact filename
+filename = 'mc_results_PID.mat'; % <-- Update this to your exact filename
 load(filename);
 
 fprintf('Loaded data from: %s\n', filename);
 
 % 2. Define your outlier threshold
 % Looking at your plot, 20 meters is a safe cutoff for a "normal" run
-threshold = 20; 
+threshold = 2; 
 
 % 3. Extract the raw RMSE data (saved inside your R struct)
 raw_rmse = R.rmse;

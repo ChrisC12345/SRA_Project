@@ -155,7 +155,7 @@ end
 function [t, emag] = errMagFromOut(so)
 %ERRMAGFROMOUT  Time vector and position-error magnitude for one run.
 pos_ts = getElement(so.logsout, 'pos').Values;
-ref_ts = getElement(so.logsout, 'ref2').Values;
+ref_ts = getElement(so.logsout, 'ref').Values;
 
 t   = pos_ts.Time(:);
 T   = numel(t);
