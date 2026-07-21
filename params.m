@@ -30,6 +30,7 @@ function parameters = params()
     p.Ay = 0.01;
     p.Az = 0.03;
     p.kh = kh;
+    p.max_w = 600;
 
     p.rotor_height = 0.03;   % m
     p.kz = kh;             % first cut

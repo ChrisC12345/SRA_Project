@@ -211,7 +211,7 @@ end
 function r = attRmseFromOut(so, Tskip)
 %ATTRMSEFROMOUT  Per-run roll/pitch tracking RMSE [rad] (trapz-weighted).
 %   Requires two named, logged signals: 'att' and 'att_ref', each carrying
-%   [roll pitch] or [roll pitch yaw]; only the first two channels are used.
+%   [roll pitch] or [roll pitch yaw]; onmcly the first two channels are used.
 %   att_ref is resampled onto att's time grid if logging rates differ.
 %   Error magnitude = sqrt(e_roll^2 + e_pitch^2).
 
